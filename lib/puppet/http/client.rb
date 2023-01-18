@@ -361,6 +361,7 @@ class Puppet::HTTP::Client
     retries = 0
     response = nil
     done = false
+    interval = nil
 
     while !done do
       connect(request.uri, options: options) do |http|
@@ -379,15 +380,7 @@ class Puppet::HTTP::Client
             elsif @retry_after_handler.retry_after?(request, response)
               interval = @retry_after_handler.retry_after_interval(request, response, retries)
               retries += 1
-              if interval
-                if http.started?
-                  Puppet.debug("Closing connection for #{Puppet::HTTP::Site.from_uri(request.uri)}")
-                  http.finish
-                end
-                Puppet.warning(_("Sleeping for %{interval} seconds before retrying the request") % { interval: interval })
-                ::Kernel.sleep(interval)
-                next
-              end
+              next if interval
             end
 
             if block_given?
@@ -403,6 +396,16 @@ class Puppet::HTTP::Client
           end
 
           done = true
+        end
+
+        if interval
+          if http.started?
+            Puppet.debug("Closing connection for #{Puppet::HTTP::Site.from_uri(request.uri)}")
+            http.finish
+          end
+          Puppet.warning(_("Sleeping for %{interval} seconds before retrying the request") % { interval: interval })
+          ::Kernel.sleep(interval)
+          interval = nil
         end
       end
     end
